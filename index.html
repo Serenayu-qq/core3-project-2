@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Photo Sphere Gallery</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            cursor: grab;
+        }
+
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            max-width: 320px;
+            z-index: 100;
+        }
+
+        .info-panel h3 {
+            margin-bottom: 12px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .info-panel p {
+            margin: 8px 0;
+            font-size: 14px;
+            line-height: 1.6;
+            opacity: 0.9;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #fff;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .modal.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-image {
+            max-width: 100%;
+            max-height: 60vh;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 16px;
+        }
+
+        .modal-description {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 24px;
+        }
+
+        .close-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            padding: 14px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .close-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        }
+
+        .close-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h3>📸 Interactive Gallery</h3>
+        <p>🖱️ Move mouse to rotate view</p>
+        <p>👆 Click spheres to view details</p>
+        <p>⚙️ Configure in the code section</p>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <img id="modal-image" class="modal-image" src="" alt="Photo">
+            <h2 id="modal-title" class="modal-title"></h2>
+            <p id="modal-description" class="modal-description"></p>
+            <button class="close-btn">Close</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        // ═══════════════════════════════════════════════════════════
+        // CONFIGURATION - Customize your gallery here
+        // ═══════════════════════════════════════════════════════════
+        
+        const CONFIG = {
+            // Background settings
+            background: {
+                image: 'background.jpg',  // Set to null for default starry background
+                type: 'sphere',           // 'plane' or 'sphere'
+                scale: 0.5,               // Only for plane type
+                enableFullRotation: true  // 360° rotation
+            },
+            
+            // Sphere settings
+            spheres: {
+                count: 30,
+                radius: 0.3,
+                distributionRadius: 5
+            },
+            
+            // Camera settings
+            camera: {
+                fov: 60,
+                near: 0.01,
+                far: 100,
+                startZ: 8
+            },
+            
+            // Animation settings
+            animation: {
+                cameraFollowSpeed: 0.05,
+                backgroundFollowSpeed: 0.05,
+                sphereRotationSpeed: { x: 0.003, y: 0.005 },
+                hoverScale: 1.3
+            }
+        };
+
+        // Photo data - Add your images and descriptions here
+        const PHOTO_DATA = [
+            {
+                image: 'photo1.jpg',
+                title: 'Photo 1',
+                description: 'Description for the first photo. Add your own text here.'
+            },
+            {
+                image: 'photo2.jpg',
+                title: 'Photo 2',
+                description: 'Description for the second photo.'
+            },
+            {
+                image: 'photo3.jpg',
+                title: 'Photo 3',
+                description: 'Description for the third photo.'
+            }
+        ];
+
+        // Auto-generate remaining photos if needed
+        const totalPhotos = Array.from({ length: CONFIG.spheres.count }, (_, i) => {
+            if (i < PHOTO_DATA.length) return PHOTO_DATA[i];
+            return {
+                image: `photo${i + 1}.jpg`,
+                title: `Photo ${i + 1}`,
+                description: `Description for photo ${i + 1}.`
+            };
+        });
+
+        // Default colors for spheres when images fail to load
+        const DEFAULT_COLORS = [
+            0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa8e6cf, 0xff8b94,
+            0x95e1d3, 0xf38181, 0xaa96da, 0xfcbad3, 0xa8d8ea
+        ];
+
+        // ═══════════════════════════════════════════════════════════
+        // APPLICATION CLASS
+        // ═══════════════════════════════════════════════════════════
+
+        class PhotoSphereGallery {
+            constructor() {
+                this.container = null;
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.spheres = [];
+                this.backgroundMesh = null;
+                
+                this.mouse = { x: 0, y: 0 };
+                this.mouseNormalized = new THREE.Vector2();
+                this.raycaster = new THREE.Raycaster();
+                this.hoveredSphere = null;
+                
+                this.background = {
+                    target: { x: 0, y: 0, rotX: 0, rotY: 0 },
+                    current: { x: 0, y: 0, rotX: 0, rotY: 0 }
+                };
+            }
+
+            init() {
+                this.setupScene();
+                this.createBackground();
+                this.createSpheres();
+                this.setupLights();
+                this.setupRenderer();
+                this.setupEventListeners();
+                this.animate();
+            }
+
+            setupScene() {
+                this.container = document.getElementById('canvas-container');
+                
+                this.camera = new THREE.PerspectiveCamera(
+                    CONFIG.camera.fov,
+                    window.innerWidth / window.innerHeight,
+                    CONFIG.camera.near,
+                    CONFIG.camera.far
+                );
+                this.camera.position.z = CONFIG.camera.startZ;
+                
+                this.scene = new THREE.Scene();
+            }
+
+            createBackground() {
+                const texture = this.generateDefaultBackground();
+                
+                if (CONFIG.background.type === 'plane') {
+                    this.createPlaneBackground(texture);
+                } else {
+                    this.createSphereBackground(texture);
+                }
+                
+                // Load custom background if specified
+                if (CONFIG.background.image) {
+                    this.loadCustomBackground();
+                }
+            }
+
+            generateDefaultBackground() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 2048;
+                canvas.height = 2048;
+                const ctx = canvas.getContext('2d');
+                
+                // Gradient background
+                const gradient = ctx.createRadialGradient(1024, 1024, 0, 1024, 1024, 1024);
+                gradient.addColorStop(0, '#1a2332');
+                gradient.addColorStop(0.5, '#0f1419');
+                gradient.addColorStop(1, '#050508');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, 2048, 2048);
+                
+                // Stars
+                this.drawStars(ctx, 500, 1.5, 0.8);
+                this.drawStars(ctx, 50, 2, 1);
+                
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            drawStars(ctx, count, maxRadius, alpha) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                for (let i = 0; i < count; i++) {
+                    const x = Math.random() * 2048;
+                    const y = Math.random() * 2048;
+                    const radius = Math.random() * maxRadius;
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            createPlaneBackground(texture) {
+                const geometry = new THREE.PlaneGeometry(
+                    100 * CONFIG.background.scale,
+                    50 * CONFIG.background.scale
+                );
+                const material = new THREE.MeshBasicMaterial({ 
+                    map: texture,
+                    side: THREE.DoubleSide
+                });
+                this.backgroundMesh = new THREE.Mesh(geometry, material);
+                this.backgroundMesh.position.z = -30;
+                this.scene.add(this.backgroundMesh);
+            }
+
+            createSphereBackground(texture) {
+                const geometry = new THREE.SphereGeometry(50, 60, 40);
+                const material = new THREE.MeshBasicMaterial({ 
+                    map: texture,
+                    side: THREE.BackSide
+                });
+                this.backgroundMesh = new THREE.Mesh(geometry, material);
+                this.scene.add(this.backgroundMesh);
+            }
+
+            loadCustomBackground() {
+                const loader = new THREE.TextureLoader();
+                loader.load(
+                    CONFIG.background.image,
+                    (texture) => {
+                        if (this.backgroundMesh) {
+                            this.backgroundMesh.material.map = texture;
+                            this.backgroundMesh.material.needsUpdate = true;
+                            console.log('✅ Background loaded:', CONFIG.background.image);
+                        }
+                    },
+                    undefined,
+                    (error) => {
+                        console.warn('⚠️ Background loading failed, using default');
+                    }
+                );
+            }
+
+            createSpheres() {
+                const geometry = new THREE.SphereGeometry(CONFIG.spheres.radius, 32, 32);
+                const loader = new THREE.TextureLoader();
+                
+                totalPhotos.forEach((data, i) => {
+                    const material = new THREE.MeshStandardMaterial({
+                        color: DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+                        metalness: 0.3,
+                        roughness: 0.4,
+                        emissive: DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+                        emissiveIntensity: 0.2
+                    });
+                    
+                    // Load texture
+                    loader.load(
+                        data.image,
+                        (texture) => {
+                            material.map = texture;
+                            material.needsUpdate = true;
+                        },
+                        undefined,
+                        () => console.log(`Using default color for ${data.image}`)
+                    );
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    
+                    // Distribute spheres in 3D space
+                    const position = this.calculateSpherePosition(i, totalPhotos.length);
+                    mesh.position.copy(position);
+                    
+                    mesh.userData = { data, index: i };
+                    
+                    this.scene.add(mesh);
+                    this.spheres.push(mesh);
+                });
+            }
+
+            calculateSpherePosition(index, total) {
+                const phi = Math.acos(-1 + (2 * index) / total);
+                const theta = Math.sqrt(total * Math.PI) * phi;
+                const r = CONFIG.spheres.distributionRadius;
+                
+                return new THREE.Vector3(
+                    r * Math.cos(theta) * Math.sin(phi),
+                    r * Math.sin(theta) * Math.sin(phi),
+                    r * Math.cos(phi)
+                );
+            }
+
+            setupLights() {
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                this.scene.add(ambientLight);
+                
+                const pointLight1 = new THREE.PointLight(0xffffff, 0.8, 100);
+                pointLight1.position.set(10, 10, 10);
+                this.scene.add(pointLight1);
+                
+                const pointLight2 = new THREE.PointLight(0x4ecdc4, 0.5, 100);
+                pointLight2.position.set(-10, -10, -10);
+                this.scene.add(pointLight2);
+            }
+
+            setupRenderer() {
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.container.appendChild(this.renderer.domElement);
+            }
+
+            setupEventListeners() {
+                window.addEventListener('resize', () => this.onWindowResize());
+                document.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                document.addEventListener('click', (e) => this.onMouseClick(e));
+                
+                const modal = document.getElementById('modal');
+                const closeBtn = modal.querySelector('.close-btn');
+                
+                closeBtn.addEventListener('click', () => this.closeModal());
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) this.closeModal();
+                });
+            }
+
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            onMouseMove(event) {
+                const halfX = window.innerWidth / 2;
+                const halfY = window.innerHeight / 2;
+                
+                this.mouse.x = (event.clientX - halfX) / 100;
+                this.mouse.y = (event.clientY - halfY) / 100;
+                
+                const normalizedX = (event.clientX - halfX) / halfX;
+                const normalizedY = (event.clientY - halfY) / halfY;
+                
+                this.updateBackgroundTarget(normalizedX, normalizedY);
+                this.updateHoverEffect(event);
+            }
+
+            updateBackgroundTarget(x, y) {
+                if (CONFIG.background.enableFullRotation) {
+                    this.background.target.rotY = x * Math.PI * 2;
+                    this.background.target.rotX = y * Math.PI;
+                } else {
+                    this.background.target.rotY = x * Math.PI;
+                    this.background.target.rotX = y * Math.PI * 0.5;
+                }
+                
+                this.background.target.x = x;
+                this.background.target.y = y;
+            }
+
+            updateHoverEffect(event) {
+                this.mouseNormalized.x = (event.clientX / window.innerWidth) * 2 - 1;
+                this.mouseNormalized.y = -(event.clientY / window.innerHeight) * 2 + 1;
+                
+                this.raycaster.setFromCamera(this.mouseNormalized, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.spheres);
+                
+                // Reset previous hover
+                if (this.hoveredSphere && (!intersects.length || intersects[0].object !== this.hoveredSphere)) {
+                    this.hoveredSphere.scale.set(1, 1, 1);
+                    this.hoveredSphere = null;
+                    document.body.style.cursor = 'grab';
+                }
+                
+                // Apply new hover
+                if (intersects.length > 0) {
+                    const sphere = intersects[0].object;
+                    if (this.hoveredSphere !== sphere) {
+                        this.hoveredSphere = sphere;
+                        sphere.scale.set(CONFIG.animation.hoverScale, CONFIG.animation.hoverScale, CONFIG.animation.hoverScale);
+                        document.body.style.cursor = 'pointer';
+                    }
+                }
+            }
+
+            onMouseClick(event) {
+                this.mouseNormalized.x = (event.clientX / window.innerWidth) * 2 - 1;
+                this.mouseNormalized.y = -(event.clientY / window.innerHeight) * 2 + 1;
+                
+                this.raycaster.setFromCamera(this.mouseNormalized, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.spheres);
+                
+                if (intersects.length > 0) {
+                    this.showModal(intersects[0].object.userData.data);
+                }
+            }
+
+            showModal(data) {
+                document.getElementById('modal-image').src = data.image;
+                document.getElementById('modal-title').textContent = data.title;
+                document.getElementById('modal-description').textContent = data.description;
+                document.getElementById('modal').classList.add('active');
+            }
+
+            closeModal() {
+                document.getElementById('modal').classList.remove('active');
+            }
+
+            updateBackground() {
+                if (!this.backgroundMesh) return;
+                
+                const speed = CONFIG.animation.backgroundFollowSpeed;
+                
+                if (CONFIG.background.type === 'plane') {
+                    this.background.current.x += (this.background.target.x - this.background.current.x) * speed;
+                    this.background.current.y += (this.background.target.y - this.background.current.y) * speed;
+                    
+                    this.backgroundMesh.position.x = this.background.current.x * 2;
+                    this.backgroundMesh.position.y = -this.background.current.y * 2;
+                } else {
+                    this.background.current.rotX += (this.background.target.rotX - this.background.current.rotX) * speed;
+                    this.background.current.rotY += (this.background.target.rotY - this.background.current.rotY) * speed;
+                    
+                    this.backgroundMesh.rotation.x = this.background.current.rotX;
+                    this.backgroundMesh.rotation.y = this.background.current.rotY;
+                }
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                
+                // Update camera
+                const speed = CONFIG.animation.cameraFollowSpeed;
+                this.camera.position.x += (this.mouse.x - this.camera.position.x) * speed;
+                this.camera.position.y += (-this.mouse.y - this.camera.position.y) * speed;
+                this.camera.lookAt(this.scene.position);
+                
+                // Update background
+                this.updateBackground();
+                
+                // Rotate spheres
+                this.spheres.forEach(sphere => {
+                    sphere.rotation.y += CONFIG.animation.sphereRotationSpeed.y;
+                    sphere.rotation.x += CONFIG.animation.sphereRotationSpeed.x;
+                });
+                
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // START APPLICATION
+        // ═══════════════════════════════════════════════════════════
+        
+        const gallery = new PhotoSphereGallery();
+        gallery.init();
+    </script>
+</body>
+</html>
