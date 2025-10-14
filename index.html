@@ -153,83 +153,105 @@
         import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
         // ═══════════════════════════════════════════════════════════
-        // CONFIGURATION - Customize your gallery here
+        // 配置区域 - 在这里自定义你的相册
         // ═══════════════════════════════════════════════════════════
         
         const CONFIG = {
-            // Background settings
+            // 背景设置
             background: {
-                image: 'background.jpg',  // Set to null for default starry background
-                type: 'sphere',           // 'plane' or 'sphere'
-                scale: 0.5,               // Only for plane type
-                enableFullRotation: true  // 360° rotation
+                image: 'background.jpg',  // 设置为 null 使用默认星空背景
+                type: 'sphere',           // 'plane' = 平面背景 或 'sphere' = 球形背景
+                scale: 0.5,               // 仅对平面背景生效
+                enableFullRotation: true  // 是否启用 360° 旋转
             },
             
-            // Sphere settings
+            // 球体设置
             spheres: {
-                count: 30,
-                radius: 0.3,
-                distributionRadius: 5
+                count: 30,                // 球体数量
+                radius: 0.3,              // 球体半径
+                distributionRadius: 5     // 分布半径
             },
             
-            // Camera settings
+            // 相机设置
             camera: {
-                fov: 60,
-                near: 0.01,
-                far: 100,
-                startZ: 8
+                fov: 60,                  // 视野角度
+                near: 0.01,               // 近裁剪面
+                far: 100,                 // 远裁剪面
+                startZ: 8                 // 初始 Z 轴位置
             },
             
-            // Animation settings
+            // 动画设置
             animation: {
-                cameraFollowSpeed: 0.05,
-                backgroundFollowSpeed: 0.05,
-                sphereRotationSpeed: { x: 0.003, y: 0.005 },
-                hoverScale: 1.3
+                cameraFollowSpeed: 0.05,        // 相机跟随速度
+                backgroundFollowSpeed: 0.05,    // 背景跟随速度
+                sphereRotationSpeed: { x: 0.003, y: 0.005 },  // 球体旋转速度
+                hoverScale: 1.3                 // 悬停时的缩放比例
             }
         };
 
-        // Photo data - Add your images and descriptions here
+        // 照片数据 - 在这里添加你的图片和描述
         const PHOTO_DATA = [
             {
-                image: 'photo1.jpg',
-                title: 'Photo 1',
-                description: 'Description for the first photo. Add your own text here.'
+                image: 'red1.jpg',
+                title: '照片 1',
+                description: '这是第一张照片的描述。在这里添加你自己的文字。'
             },
             {
-                image: 'photo2.jpg',
-                title: 'Photo 2',
-                description: 'Description for the second photo.'
+                image: '2.jpg',
+                title: '照片 2',
+                description: '这是第二张照片的描述。'
             },
             {
                 image: 'photo3.jpg',
-                title: 'Photo 3',
-                description: 'Description for the third photo.'
+                title: '照片 3',
+                description: '这是第三张照片的描述。'
             }
         ];
 
-        // Auto-generate remaining photos if needed
+        // 固定位置球体配置 - 这些球体会跟随背景一起移动/旋转
+        const FIXED_SPHERES = [
+            {
+                image: 'red1.jpg',
+                title: '固定球体 1',
+                description: '这个球体固定在背景上，会跟随背景一起移动。',
+                position: {x: 0, y: 0, z: -20},    // 相对于背景的位置
+                radius: 0.5,                           // 球体大小
+                color: 0xff6b6b                        // 默认颜色（图片加载失败时使用）
+            },
+            {
+                image: 'fixed2.jpg',
+                title: '固定球体 2',
+                description: '第二个固定球体。',
+                position: { x: 10, y: 0, z: -25 },
+                radius: 0.4,
+                color: 0x4ecdc4
+            }
+            // 继续添加更多固定球体...
+        ];
+
+        // 自动生成剩余的照片（如果需要）
         const totalPhotos = Array.from({ length: CONFIG.spheres.count }, (_, i) => {
             if (i < PHOTO_DATA.length) return PHOTO_DATA[i];
             return {
                 image: `photo${i + 1}.jpg`,
-                title: `Photo ${i + 1}`,
-                description: `Description for photo ${i + 1}.`
+                title: `照片 ${i + 1}`,
+                description: `这是第 ${i + 1} 张照片的描述。`
             };
         });
 
-        // Default colors for spheres when images fail to load
+        // 当图片加载失败时使用的默认颜色
         const DEFAULT_COLORS = [
             0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa8e6cf, 0xff8b94,
             0x95e1d3, 0xf38181, 0xaa96da, 0xfcbad3, 0xa8d8ea
         ];
 
         // ═══════════════════════════════════════════════════════════
-        // APPLICATION CLASS
+        // 应用程序主类
         // ═══════════════════════════════════════════════════════════
 
         class PhotoSphereGallery {
             constructor() {
+                // 核心对象
                 this.container = null;
                 this.scene = null;
                 this.camera = null;
@@ -237,17 +259,20 @@
                 this.spheres = [];
                 this.backgroundMesh = null;
                 
+                // 鼠标和交互
                 this.mouse = { x: 0, y: 0 };
                 this.mouseNormalized = new THREE.Vector2();
                 this.raycaster = new THREE.Raycaster();
                 this.hoveredSphere = null;
                 
+                // 背景状态
                 this.background = {
                     target: { x: 0, y: 0, rotX: 0, rotY: 0 },
                     current: { x: 0, y: 0, rotX: 0, rotY: 0 }
                 };
             }
 
+            // 初始化应用
             init() {
                 this.setupScene();
                 this.createBackground();
@@ -258,6 +283,7 @@
                 this.animate();
             }
 
+            // 设置场景和相机
             setupScene() {
                 this.container = document.getElementById('canvas-container');
                 
@@ -272,6 +298,7 @@
                 this.scene = new THREE.Scene();
             }
 
+            // 创建背景
             createBackground() {
                 const texture = this.generateDefaultBackground();
                 
@@ -281,19 +308,20 @@
                     this.createSphereBackground(texture);
                 }
                 
-                // Load custom background if specified
+                // 如果指定了自定义背景，则加载
                 if (CONFIG.background.image) {
                     this.loadCustomBackground();
                 }
             }
 
+            // 生成默认星空背景
             generateDefaultBackground() {
                 const canvas = document.createElement('canvas');
                 canvas.width = 2048;
                 canvas.height = 2048;
                 const ctx = canvas.getContext('2d');
                 
-                // Gradient background
+                // 渐变背景
                 const gradient = ctx.createRadialGradient(1024, 1024, 0, 1024, 1024, 1024);
                 gradient.addColorStop(0, '#1a2332');
                 gradient.addColorStop(0.5, '#0f1419');
@@ -301,13 +329,14 @@
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, 2048, 2048);
                 
-                // Stars
+                // 绘制星星
                 this.drawStars(ctx, 500, 1.5, 0.8);
                 this.drawStars(ctx, 50, 2, 1);
                 
                 return new THREE.CanvasTexture(canvas);
             }
 
+            // 绘制星星辅助函数
             drawStars(ctx, count, maxRadius, alpha) {
                 ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
                 for (let i = 0; i < count; i++) {
@@ -320,6 +349,7 @@
                 }
             }
 
+            // 创建平面背景
             createPlaneBackground(texture) {
                 const geometry = new THREE.PlaneGeometry(
                     100 * CONFIG.background.scale,
@@ -334,6 +364,7 @@
                 this.scene.add(this.backgroundMesh);
             }
 
+            // 创建球形背景
             createSphereBackground(texture) {
                 const geometry = new THREE.SphereGeometry(50, 60, 40);
                 const material = new THREE.MeshBasicMaterial({ 
@@ -344,6 +375,7 @@
                 this.scene.add(this.backgroundMesh);
             }
 
+            // 加载自定义背景图片
             loadCustomBackground() {
                 const loader = new THREE.TextureLoader();
                 loader.load(
@@ -352,16 +384,17 @@
                         if (this.backgroundMesh) {
                             this.backgroundMesh.material.map = texture;
                             this.backgroundMesh.material.needsUpdate = true;
-                            console.log('✅ Background loaded:', CONFIG.background.image);
+                            console.log('✅ 背景图片加载成功:', CONFIG.background.image);
                         }
                     },
                     undefined,
                     (error) => {
-                        console.warn('⚠️ Background loading failed, using default');
+                        console.warn('⚠️ 背景图片加载失败，使用默认背景');
                     }
                 );
             }
 
+            // 创建所有照片球体
             createSpheres() {
                 const geometry = new THREE.SphereGeometry(CONFIG.spheres.radius, 32, 32);
                 const loader = new THREE.TextureLoader();
@@ -375,7 +408,7 @@
                         emissiveIntensity: 0.2
                     });
                     
-                    // Load texture
+                    // 加载纹理
                     loader.load(
                         data.image,
                         (texture) => {
@@ -383,12 +416,12 @@
                             material.needsUpdate = true;
                         },
                         undefined,
-                        () => console.log(`Using default color for ${data.image}`)
+                        () => console.log(`${data.image} 使用默认颜色`)
                     );
                     
                     const mesh = new THREE.Mesh(geometry, material);
                     
-                    // Distribute spheres in 3D space
+                    // 在 3D 空间中分布球体
                     const position = this.calculateSpherePosition(i, totalPhotos.length);
                     mesh.position.copy(position);
                     
@@ -399,6 +432,7 @@
                 });
             }
 
+            // 计算球体在 3D 空间中的位置
             calculateSpherePosition(index, total) {
                 const phi = Math.acos(-1 + (2 * index) / total);
                 const theta = Math.sqrt(total * Math.PI) * phi;
@@ -411,19 +445,24 @@
                 );
             }
 
+            // 设置场景灯光
             setupLights() {
+                // 环境光
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
                 this.scene.add(ambientLight);
                 
+                // 主光源
                 const pointLight1 = new THREE.PointLight(0xffffff, 0.8, 100);
                 pointLight1.position.set(10, 10, 10);
                 this.scene.add(pointLight1);
                 
+                // 补光
                 const pointLight2 = new THREE.PointLight(0x4ecdc4, 0.5, 100);
                 pointLight2.position.set(-10, -10, -10);
                 this.scene.add(pointLight2);
             }
 
+            // 设置渲染器
             setupRenderer() {
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -431,6 +470,7 @@
                 this.container.appendChild(this.renderer.domElement);
             }
 
+            // 设置事件监听器
             setupEventListeners() {
                 window.addEventListener('resize', () => this.onWindowResize());
                 document.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -445,12 +485,14 @@
                 });
             }
 
+            // 窗口大小改变时调整
             onWindowResize() {
                 this.camera.aspect = window.innerWidth / window.innerHeight;
                 this.camera.updateProjectionMatrix();
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
             }
 
+            // 鼠标移动事件处理
             onMouseMove(event) {
                 const halfX = window.innerWidth / 2;
                 const halfY = window.innerHeight / 2;
@@ -465,6 +507,7 @@
                 this.updateHoverEffect(event);
             }
 
+            // 更新背景目标位置/旋转
             updateBackgroundTarget(x, y) {
                 if (CONFIG.background.enableFullRotation) {
                     this.background.target.rotY = x * Math.PI * 2;
@@ -478,6 +521,7 @@
                 this.background.target.y = y;
             }
 
+            // 更新悬停效果
             updateHoverEffect(event) {
                 this.mouseNormalized.x = (event.clientX / window.innerWidth) * 2 - 1;
                 this.mouseNormalized.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -485,14 +529,14 @@
                 this.raycaster.setFromCamera(this.mouseNormalized, this.camera);
                 const intersects = this.raycaster.intersectObjects(this.spheres);
                 
-                // Reset previous hover
+                // 重置之前悬停的球体
                 if (this.hoveredSphere && (!intersects.length || intersects[0].object !== this.hoveredSphere)) {
                     this.hoveredSphere.scale.set(1, 1, 1);
                     this.hoveredSphere = null;
                     document.body.style.cursor = 'grab';
                 }
                 
-                // Apply new hover
+                // 应用新的悬停效果
                 if (intersects.length > 0) {
                     const sphere = intersects[0].object;
                     if (this.hoveredSphere !== sphere) {
@@ -503,6 +547,7 @@
                 }
             }
 
+            // 鼠标点击事件处理
             onMouseClick(event) {
                 this.mouseNormalized.x = (event.clientX / window.innerWidth) * 2 - 1;
                 this.mouseNormalized.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -515,6 +560,7 @@
                 }
             }
 
+            // 显示模态框
             showModal(data) {
                 document.getElementById('modal-image').src = data.image;
                 document.getElementById('modal-title').textContent = data.title;
@@ -522,22 +568,26 @@
                 document.getElementById('modal').classList.add('active');
             }
 
+            // 关闭模态框
             closeModal() {
                 document.getElementById('modal').classList.remove('active');
             }
 
+            // 更新背景位置/旋转（平滑过渡）
             updateBackground() {
                 if (!this.backgroundMesh) return;
                 
                 const speed = CONFIG.animation.backgroundFollowSpeed;
                 
                 if (CONFIG.background.type === 'plane') {
+                    // 平面背景 - 跟随鼠标平移
                     this.background.current.x += (this.background.target.x - this.background.current.x) * speed;
                     this.background.current.y += (this.background.target.y - this.background.current.y) * speed;
                     
                     this.backgroundMesh.position.x = this.background.current.x * 2;
                     this.backgroundMesh.position.y = -this.background.current.y * 2;
                 } else {
+                    // 球形背景 - 跟随鼠标旋转
                     this.background.current.rotX += (this.background.target.rotX - this.background.current.rotX) * speed;
                     this.background.current.rotY += (this.background.target.rotY - this.background.current.rotY) * speed;
                     
@@ -546,30 +596,32 @@
                 }
             }
 
+            // 动画循环
             animate() {
                 requestAnimationFrame(() => this.animate());
                 
-                // Update camera
+                // 更新相机位置
                 const speed = CONFIG.animation.cameraFollowSpeed;
                 this.camera.position.x += (this.mouse.x - this.camera.position.x) * speed;
                 this.camera.position.y += (-this.mouse.y - this.camera.position.y) * speed;
                 this.camera.lookAt(this.scene.position);
                 
-                // Update background
+                // 更新背景
                 this.updateBackground();
                 
-                // Rotate spheres
+                // 旋转所有球体
                 this.spheres.forEach(sphere => {
                     sphere.rotation.y += CONFIG.animation.sphereRotationSpeed.y;
                     sphere.rotation.x += CONFIG.animation.sphereRotationSpeed.x;
                 });
                 
+                // 渲染场景
                 this.renderer.render(this.scene, this.camera);
             }
         }
 
         // ═══════════════════════════════════════════════════════════
-        // START APPLICATION
+        // 启动应用程序
         // ═══════════════════════════════════════════════════════════
         
         const gallery = new PhotoSphereGallery();
