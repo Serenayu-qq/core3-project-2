@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Finding Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            cursor: grab;
+            position: relative;
+            z-index: 1;
+        }
+
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            max-width: 320px;
+            z-index: 100;
+        }
+
+        .info-panel h3 {
+            margin-bottom: 12px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .info-panel p {
+            margin: 8px 0;
+            font-size: 14px;
+            line-height: 1.6;
+            opacity: 0.9;
+        }
+
+        .score {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4ecdc4;
+            margin-top: 10px;
+        }
+
+        .color-scores {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .color-score-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .color-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .color-name {
+            flex: 1;
+        }
+
+        .color-count {
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #fff;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 500px;
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .modal.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 16px;
+        }
+
+        .modal-description {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 24px;
+        }
+
+        .found-message {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border: none;
+            padding: 14px 40px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .close-btn:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h3>🎨 Color Finding Game</h3>
+        <p>🔍 Find and click the hidden spheres</p>
+        <p>🖱️ Drag to rotate the scene</p>
+        <p>👆 Click spheres to reveal colors</p>
+        <div class="score">Total Found: <span id="score">0</span> / <span id="total">22</span></div>
+        <div class="color-scores" id="colorScores"></div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="found-message">🎉 Color Found!</div>
+            <h2 id="modal-title" class="modal-title"></h2>
+            <p id="modal-description" class="modal-description"></p>
+            <button class="close-btn">Continue</button>
+        </div>
+    </div>
+
+    <div id="completion-modal" class="completion-modal">
+        <div class="completion-content">
+            <div class="completion-title">🎉 Congratulations! 🎉</div>
+            <div class="completion-message">You found all 22 colors!</div>
+            <button class="restart-btn">Restart Game</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        // 游戏配置
+        const CONFIG = {
+            background: {
+                image: 'background.jpg',  // 设置为 null 使用默认星空背景
+                type: 'sphere',           
+                scale: 0.5,               // 仅对平面背景生效
+                enableFullRotation: true
+            }
+        };
+
+        const SPHERES = [
+            // 1个蓝色
+            { id: 'blue1', title: 'Sky', description: 'The sky looks blue because sunlight is made of many colors, and the blue light waves are scattered in all directions by the gases and particles in the air. This scattering, called Rayleigh scattering, makes the blue light spread more than other colors, so we see a blue sky during the day.', position: { x: 2, y: 14, z: -5 }, radius: 0.5, color: 0x51c4f5, category: 'blue', name: '蓝色' },
+            
+            // 6个绿色
+            { id: 'green1', title: '翡翠绿', description: '如翡翠般珍贵的绿色，充满生机与希望', position: { x: 3, y: 1, z: -4 }, radius: 0.45, color: 0x00ff00, category: 'green', name: '绿色' },
+            { id: 'green2', title: '森林绿', description: '茂密森林的颜色，带来大自然的清新气息', position: { x: -3, y: 0, z: -6 }, radius: 0.4, color: 0x228b22, category: 'green', name: '绿色' },
+            { id: 'green3', title: '薄荷绿', description: '清凉的薄荷绿，让人感到舒适和放松', position: { x: 1, y: -2, z: -5 }, radius: 0.5, color: 0x98fb98, category: 'green', name: '绿色' },
+            { id: 'green4', title: '橄榄绿', description: '成熟的橄榄绿，象征着和平与智慧', position: { x: -2, y: 3, z: -7 }, radius: 0.42, color: 0x6b8e23, category: 'green', name: '绿色' },
+            { id: 'green5', title: '青草绿', description: '春天青草的颜色，充满活力与朝气', position: { x: 4, y: -1, z: -6 }, radius: 0.48, color: 0x7cfc00, category: 'green', name: '绿色' },
+            { id: 'green6', title: '松石绿', description: '如松石般优雅的绿色，带有一丝蓝色的神秘', position: { x: -1, y: -3, z: -4 }, radius: 0.46, color: 0x40e0d0, category: 'green', name: '绿色' },
+            
+            // 4个红色
+            { id: 'red1', title: '烈焰红', description: '如火焰般炽热的红色，充满激情与力量', position: { x: 2, y: 2, z: -5 }, radius: 0.5, color: 0xff0000, category: 'red', name: '红色' },
+            { id: 'red2', title: '玫瑰红', description: '浪漫的玫瑰红，象征着爱情与美好', position: { x: -4, y: 1, z: -5 }, radius: 0.44, color: 0xff1493, category: 'red', name: '红色' },
+            { id: 'red3', title: '朱砂红', description: '传统的朱砂红，带有东方的神秘气息', position: { x: 0, y: -1, z: -7 }, radius: 0.47, color: 0xdc143c, category: 'red', name: '红色' },
+            { id: 'red4', title: '樱桃红', description: '甜美的樱桃红，如同夏日的果实般诱人', position: { x: 3, y: -2, z: -6 }, radius: 0.43, color: 0xff4500, category: 'red', name: '红色' },
+            
+            // 4个黑色
+            { id: 'black1', title: '午夜黑', description: '如午夜般深沉的黑色，充满神秘与未知', position: { x: -3, y: -2, z: -5 }, radius: 0.5, color: 0x1a1a1a, category: 'black', name: '黑色' },
+            { id: 'black2', title: '墨玉黑', description: '如墨玉般深邃的黑色，优雅而高贵', position: { x: 2, y: -3, z: -7 }, radius: 0.45, color: 0x0f0f0f, category: 'black', name: '黑色' },
+            { id: 'black3', title: '暗夜黑', description: '暗夜的颜色，宁静而深邃', position: { x: -2, y: 4, z: -6 }, radius: 0.48, color: 0x2a2a2a, category: 'black', name: '黑色' },
+            { id: 'black4', title: '乌木黑', description: '乌木的深黑色，坚韧而永恒', position: { x: 4, y: 2, z: -8 }, radius: 0.46, color: 0x151515, category: 'black', name: '黑色' },
+            
+            // 7个黄色
+            { id: 'yellow1', title: '金色阳光', description: '如阳光般灿烂的金黄色，温暖而明亮', position: { x: 1, y: 3, z: -5 }, radius: 0.5, color: 0xffd700, category: 'yellow', name: '黄色' },
+            { id: 'yellow2', title: '柠檬黄', description: '清新的柠檬黄，充满活力与朝气', position: { x: -1, y: 1, z: -4 }, radius: 0.44, color: 0xffff00, category: 'yellow', name: '黄色' },
+            { id: 'yellow3', title: '琥珀黄', description: '如琥珀般温润的黄色，古老而珍贵', position: { x: 3, y: -1, z: -7 }, radius: 0.47, color: 0xffbf00, category: 'yellow', name: '黄色' },
+            { id: 'yellow4', title: '芥末黄', description: '独特的芥末黄，带有一丝复古的韵味', position: { x: -4, y: -1, z: -6 }, radius: 0.45, color: 0xe1ad01, category: 'yellow', name: '黄色' },
+            { id: 'yellow5', title: '鹅黄', description: '温柔的鹅黄色，如同春日的温暖阳光', position: { x: 0, y: 4, z: -7 }, radius: 0.43, color: 0xfff68f, category: 'yellow', name: '黄色' },
+            { id: 'yellow6', title: '向日葵黄', description: '向日葵的明亮黄色，充满希望与活力', position: { x: 2, y: 0, z: -8 }, radius: 0.49, color: 0xffda00, category: 'yellow', name: '黄色' },
+            { id: 'yellow7', title: '蜂蜜黄', description: '如蜂蜜般甜美的黄色，温暖而香甜', position: { x: -3, y: 2, z: -8 }, radius: 0.46, color: 0xffa500, category: 'yellow', name: '黄色' }
+        ];
+
+        // 游戏类
+        class Game {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 100);
+                this.camera.position.z = 8;
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                document.getElementById('canvas-container').appendChild(this.renderer.domElement);
+
+                this.spheres = [];
+                this.mouse = { x: 0, y: 0 };
+                this.isDragging = false;
+                this.dragStart = null;
+                this.rotation = { x: 0, y: 0 };
+                this.found = 0;
+                this.stats = {};
+
+                this.init();
+            }
+
+            init() {
+                // 添加坐标轴辅助线
+                const axesHelper = new THREE.AxesHelper(15);
+                this.scene.add(axesHelper);
+                
+                // 添加网格辅助线 - 更稀疏的网格
+                const gridSize = 20;
+                const divisions = 5;  // 减少分割数，使网格更稀疏
+                
+                // XZ平面 (地面)
+                const gridXZ = new THREE.GridHelper(gridSize, divisions, 0x444444, 0x222222);
+                gridXZ.material.opacity = 0.3;
+                gridXZ.material.transparent = true;
+                this.scene.add(gridXZ);
+                
+                // XY平面 (前后面)
+                const gridXY = new THREE.GridHelper(gridSize, divisions, 0x444444, 0x222222);
+                gridXY.rotation.x = Math.PI / 2;
+                gridXY.material.opacity = 0.3;
+                gridXY.material.transparent = true;
+                this.scene.add(gridXY);
+                
+                // YZ平面 (左右面)
+                const gridYZ = new THREE.GridHelper(gridSize, divisions, 0x444444, 0x222222);
+                gridYZ.rotation.z = Math.PI / 2;
+                gridYZ.material.opacity = 0.3;
+                gridYZ.material.transparent = true;
+                this.scene.add(gridYZ);
+                
+                // 添加灯光
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+                const light = new THREE.PointLight(0xffffff, 0.8);
+                light.position.set(10, 10, 10);
+                this.scene.add(light);
+
+                // 创建背景
+                this.createBackground();
+
+                // 创建球体组
+                this.group = new THREE.Group();
+                this.scene.add(this.group);
+
+                // 创建所有球体
+                SPHERES.forEach((data, i) => {
+                    const mesh = new THREE.Mesh(
+                        new THREE.SphereGeometry(data.radius, 32, 32),
+                        new THREE.MeshStandardMaterial({ color: 0x808080, metalness: 0.3, roughness: 0.4 })
+                    );
+                    mesh.position.set(data.position.x, data.position.y, data.position.z);
+                    mesh.userData = { data, found: false, targetColor: new THREE.Color(data.color), currentColor: new THREE.Color(0x808080) };
+                    this.group.add(mesh);
+                    this.spheres.push(mesh);
+
+                    // 添加从原点到每个球体的连接线
+                    const points = [
+                        new THREE.Vector3(0, 0, 0),
+                        new THREE.Vector3(data.position.x, data.position.y, data.position.z)
+                    ];
+                    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const lineMaterial = new THREE.LineBasicMaterial({ 
+                        color: 0x404040, 
+                        opacity: 0.3, 
+                        transparent: true 
+                    });
+                    const line = new THREE.Line(lineGeometry, lineMaterial);
+                    this.group.add(line);
+
+                    // 统计
+                    if (!this.stats[data.category]) {
+                        this.stats[data.category] = { name: data.name, color: data.color, total: 0, found: 0 };
+                    }
+                    this.stats[data.category].total++;
+                });
+
+                this.updateStats();
+                this.setupEvents();
+                this.animate();
+            }
+
+
+
+
+            
+
+            createBackground() {
+                // 先创建默认星空背景
+                const starTexture = this.generateStarBackground();
+                const bgGeometry = new THREE.SphereGeometry(50, 60, 40);
+                const bgMaterial = new THREE.MeshBasicMaterial({ 
+                    map: starTexture, 
+                    side: THREE.BackSide 
+                });
+                this.backgroundMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+                this.scene.add(this.backgroundMesh);
+
+                // 如果配置了图片背景，尝试加载
+                if (CONFIG.background.image) {
+                    const loader = new THREE.TextureLoader();
+                    loader.load(
+                        CONFIG.background.image,
+                        (texture) => {
+                            // 成功加载，替换背景
+                            console.log('背景图片加载成功');
+                            this.backgroundMesh.material.map = texture;
+                            this.backgroundMesh.material.needsUpdate = true;
+                        },
+                        undefined,
+                        (error) => {
+                            // 加载失败，保持星空背景
+                            console.log('背景图片加载失败，使用默认星空背景');
+                        }
+                    );
+                }
+            }
+
+            generateStarBackground() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 2048;
+                canvas.height = 2048;
+                const ctx = canvas.getContext('2d');
+                
+                // 渐变背景
+                const grad = ctx.createRadialGradient(1024, 1024, 0, 1024, 1024, 1024);
+                grad.addColorStop(0, '#1a2332');
+                grad.addColorStop(1, '#050508');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 2048, 2048);
+                
+                // 绘制星星
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                for (let i = 0; i < 500; i++) {
+                    ctx.beginPath();
+                    ctx.arc(Math.random() * 2048, Math.random() * 2048, Math.random() * 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            setupEvents() {
+                const raycaster = new THREE.Raycaster();
+                const mouseVec = new THREE.Vector2();
+
+                document.addEventListener('mousedown', (e) => {
+                    this.isDragging = false;
+                    this.dragStart = { x: e.clientX, y: e.clientY };
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    this.mouse.x = (e.clientX - window.innerWidth / 2) / 100;
+                    this.mouse.y = (e.clientY - window.innerHeight / 2) / 100;
+
+                    if (this.dragStart) {
+                        const dx = e.clientX - this.dragStart.x;
+                        const dy = e.clientY - this.dragStart.y;
+                        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+                            this.isDragging = true;
+                            this.rotation.y += dx * 0.01;
+                            this.rotation.x += dy * 0.01;
+                            this.dragStart = { x: e.clientX, y: e.clientY };
+                        }
+                    }
+                });
+
+                document.addEventListener('mouseup', () => {
+                    this.dragStart = null;
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (this.isDragging) return;
+                    if (e.target.closest('.info-panel') || e.target.closest('.modal')) return;
+
+                    mouseVec.x = (e.clientX / window.innerWidth) * 2 - 1;
+                    mouseVec.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                    raycaster.setFromCamera(mouseVec, this.camera);
+
+                    const hits = raycaster.intersectObjects(this.spheres);
+                    if (hits.length > 0) {
+                        const sphere = hits[0].object;
+                        if (!sphere.userData.found) {
+                            sphere.userData.found = true;
+                            sphere.userData.transitioning = true;
+                            this.found++;
+                            this.stats[sphere.userData.data.category].found++;
+                            this.updateStats();
+                            
+                            console.log('Found:', this.found, '/ 22'); // 调试信息
+                        }
+                        this.showModal(sphere.userData.data);
+                    }
+                });
+
+                document.querySelector('.close-btn').addEventListener('click', () => {
+                    document.getElementById('modal').classList.remove('active');
+                });
+
+                document.querySelector('.restart-btn').addEventListener('click', () => {
+                    this.restartGame();
+                });
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+            }
+
+            showModal(data) {
+                const regularModal = document.getElementById('modal');
+                const completionModal = document.getElementById('completion-modal');
+                
+                // 检查是否收集完所有球体
+                if (this.found >= SPHERES.length) {
+                    console.log('All balls collected! Showing completion modal immediately...'); // 调试信息
+                    // 直接显示完成模态框，不显示常规模态框
+                    setTimeout(() => {
+                        this.showCompletionModal();
+                    }, 100);
+                } else {
+                    // 正常显示球体信息
+                    document.getElementById('modal-title').textContent = data.title;
+                    document.getElementById('modal-description').textContent = data.description;
+                    regularModal.classList.add('active');
+                }
+            }
+
+            showCompletionModal() {
+                console.log('Showing completion modal!');
+                const modal = document.getElementById('completion-modal');
+                if (modal) {
+                    modal.classList.add('active');
+                    console.log('Modal activated, should be visible now');
+                } else {
+                    console.error('Completion modal not found!');
+                }
+            }
+
+            restartGame() {
+                // 关闭完成提示
+                document.getElementById('completion-modal').classList.remove('active');
+
+                // 重置所有球体状态
+                this.found = 0;
+                this.spheres.forEach(sphere => {
+                    sphere.userData.found = false;
+                    sphere.userData.transitioning = true;
+                    sphere.userData.currentColor = new THREE.Color(0x808080);
+                    sphere.material.color.set(0x808080);
+                });
+
+                // 重置统计
+                Object.keys(this.stats).forEach(key => {
+                    this.stats[key].found = 0;
+                });
+
+                // 重置旋转
+                this.rotation = { x: 0, y: 0 };
+
+                // 更新显示
+                this.updateStats();
+            }
+
+            updateStats() {
+                document.getElementById('score').textContent = this.found;
+                const container = document.getElementById('colorScores');
+                container.innerHTML = '';
+                Object.values(this.stats).forEach(stat => {
+                    const div = document.createElement('div');
+                    div.className = 'color-score-item';
+                    div.innerHTML = `
+                        <div class="color-dot" style="background-color: #${stat.color.toString(16).padStart(6, '0')}"></div>
+                        <div class="color-name">${stat.name}</div>
+                        <div class="color-count">${stat.found} / ${stat.total}</div>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+
+                this.camera.position.x += (this.mouse.x - this.camera.position.x) * 0.05;
+                this.camera.position.y += (-this.mouse.y - this.camera.position.y) * 0.05;
+                this.camera.lookAt(0, 0, 0);
+
+                this.group.rotation.x += (this.rotation.x - this.group.rotation.x) * 0.05;
+                this.group.rotation.y += (this.rotation.y - this.group.rotation.y) * 0.05;
+
+                // 背景跟随球体旋转
+                if (this.backgroundMesh) {
+                    this.backgroundMesh.rotation.x = this.group.rotation.x;
+                    this.backgroundMesh.rotation.y = this.group.rotation.y;
+                }
+
+                this.spheres.forEach(s => {
+                    s.rotation.x += 0.003;
+                    s.rotation.y += 0.005;
+
+                    if (s.userData.transitioning) {
+                        s.userData.currentColor.lerp(s.userData.targetColor, 0.1);
+                        s.material.color.copy(s.userData.currentColor);
+
+                        const dist = Math.abs(s.userData.currentColor.r - s.userData.targetColor.r) +
+                                    Math.abs(s.userData.currentColor.g - s.userData.targetColor.g) +
+                                    Math.abs(s.userData.currentColor.b - s.userData.targetColor.b);
+                        if (dist < 0.01) s.userData.transitioning = false;
+                    }
+                });
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        new Game();
+    </script>
+</body>
+</html>
